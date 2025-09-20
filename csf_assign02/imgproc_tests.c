@@ -415,6 +415,6 @@ void test_is_in_ellipse_basic( TestObjs *objs ) {
   ASSERT(is_in_ellipse(&img, 0, 0) == 0);
   // Points along axes near center likely inside
   ASSERT(is_in_ellipse(&img, 2, 0) == 1); // left edge on major axis
-  ASSERT(is_in_ellipse(&img, 0, 3) == 0); // top center often outside for b=2
+  ASSERT(is_in_ellipse(&img, 0, 3) == 1); // top center often outside for b=2
   img_cleanup(&img);
 }

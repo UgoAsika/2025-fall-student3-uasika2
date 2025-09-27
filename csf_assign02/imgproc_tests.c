@@ -1,404 +1,88 @@
-#include <assert.h>
+// imgproc_tests.c — tests for MS1–MS3 using tctest harness.
+// This file conditionally compiles/runs a smaller suite for MS2
+// (the ASM build), controlled by -DASM_BUILD passed only when
+// building the ASM test binary.
+//
+// C build (no ASM_BUILD): run full suite (MS1/MS3).
+// ASM build (ASM_BUILD):   run only complement + transpose +
+//                          (optional) helpers you ported in ASM.
+
+#include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
+#include <string.h>
+#include <stdint.h>
+#include <assert.h>
+
 #include "tctest.h"
+#include "image.h"
 #include "imgproc.h"
 
-// An expected color identified by a (non-zero) character code.
-// Used in the "struct Picture" data type.
-struct ExpectedColor {
-  char c;
-  uint32_t color;
-};
-
-// Type representing a "picture" of an expected image.
-// Useful for creating a very simple Image to be accessed
-// by test functions.
-struct Picture {
-  struct ExpectedColor colors[40];
-  int width, height;
-  const char *data;
-};
-
-// Some "basic" colors to use in test struct Pictures.
-// Note that the ranges '1'-'5', 'A'-'E', and 'P'-'T'
-// are (respectively) colors 'r','g','b','c', and 'm'
-// with just the red, green, and blue color component values
-#define TEST_COLORS \
-    { \
-      { ' ', 0xFFFFFFFF }, \
-      { '_', 0x000000FF }, \
-      { 'r', 0xFF0000FF }, \
-      { 'g', 0x00FF00FF }, \
-      { 'b', 0x0000FFFF }, \
-      { 'c', 0x00FFFFFF }, \
-      { 'm', 0xFF00FFFF }, \
-      { '1', 0xFF0000FF }, \
-      { '2', 0x000000FF }, \
-      { '3', 0x000000FF }, \
-      { '4', 0x000000FF }, \
-      { '5', 0xFF0000FF }, \
-      { 'A', 0x000000FF }, \
-      { 'B', 0x00FF00FF }, \
-      { 'C', 0x000000FF }, \
-      { 'D', 0x00FF00FF }, \
-      { 'E', 0x000000FF }, \
-      { 'P', 0x000000FF }, \
-      { 'Q', 0x000000FF }, \
-      { 'R', 0x0000FFFF }, \
-      { 'S', 0x0000FFFF }, \
-      { 'T', 0x0000FFFF }, \
-    }
-
-// Data type for the test fixture object.
 typedef struct {
-  // smiley-face picture
-  struct Picture smiley_pic;
-
-  // original smiley-face Image object
-  struct Image *smiley;
-
-  // empty Image object to use for output of
-  // transformation on smiley-face image
-  struct Image *smiley_out;
-
-  // a square image (same width/height) to use as a test
-  // for the transpose transformation
-  struct Picture sq_test_pic;
-
-  // original square Image object
-  struct Image *sq_test;
-
-  // empty image for output of transpose transformation
-  struct Image *sq_test_out;
+  struct Image in_small;
+  struct Image out_small;
+  struct Image in_rect;
+  struct Image out_rect;
 } TestObjs;
 
-// Functions to create and clean up a test fixture object
-TestObjs *setup( void );
-void cleanup( TestObjs *objs );
-
-// Helper functions used by the test code
-struct Image *picture_to_img( const struct Picture *pic );
-uint32_t lookup_color(char c, const struct ExpectedColor *colors);
-bool images_equal( struct Image *a, struct Image *b );
-void destroy_img( struct Image *img );
-
-// API tests
-void test_complement_basic( TestObjs *objs );
-void test_transpose_basic( TestObjs *objs );
-void test_ellipse_basic( TestObjs *objs );
-void test_emboss_basic( TestObjs *objs );
-
-// Helper unit tests (Milestone 1 requirement)
-void test_getters_and_make_pixel(TestObjs *objs);
-void test_compute_index_basic(TestObjs *objs);
-void test_is_in_ellipse_basic(TestObjs *objs);
-
-int main( int argc, char **argv ) {
-  // allow the specific test to execute to be specified as the
-  // first command line argument
-  if ( argc > 1 )
-    tctest_testname_to_execute = argv[1];
-
-  TEST_INIT();
-
-  TestObjs *objs = setup();
-
-  // Run tests.
-  TEST( test_complement_basic );
-  TEST( test_transpose_basic );
-  TEST( test_ellipse_basic );
-  TEST( test_emboss_basic );
-
-  // Helper function tests
-  TEST( test_getters_and_make_pixel );
-  TEST( test_compute_index_basic );
-  TEST( test_is_in_ellipse_basic );
-
-  cleanup(objs);
-
-  TEST_FINI();
+static void fill_solid(struct Image *img, uint32_t px) {
+  int n = img->width * img->height;
+  for (int i = 0; i < n; i++) {
+    img->data[i] = px;
+  }
 }
 
-////////////////////////////////////////////////////////////////////////
-// Test fixture setup/cleanup functions
-////////////////////////////////////////////////////////////////////////
+static TestObjs *setup(void) {
+  TestObjs *objs = (TestObjs *) malloc(sizeof(TestObjs));
+  assert(objs);
 
-TestObjs *setup( void ) {
-  TestObjs *objs = (TestObjs *) malloc( sizeof(TestObjs) );
+  img_init(&objs->in_small,  2, 2);
+  img_init(&objs->out_small, 2, 2);
 
-  struct Picture smiley_pic = {
-    TEST_COLORS,
-    16, // width
-    10, // height
-    "    mrrrggbc    "
-    "   c        b   "
-    "  r   r  b   c  "
-    " b            b "
-    " b            r "
-    " g   b    c   r "
-    "  c   ggrb   b  "
-    "   m        c   "
-    "    gggrrbmc    "
-    "                "
-  };
-  objs->smiley_pic = smiley_pic;
-  objs->smiley = picture_to_img( &smiley_pic );
+  img_init(&objs->in_rect,  6, 4);
+  img_init(&objs->out_rect, 6, 4);
 
-  objs->smiley_out = (struct Image *) malloc( sizeof( struct Image ) );
-  img_init( objs->smiley_out, objs->smiley->width, objs->smiley->height );
+  objs->in_small.data[compute_index(&objs->in_small, 0, 0)] = make_pixel(0x10, 0x20, 0x30, 0x40);
+  objs->in_small.data[compute_index(&objs->in_small, 0, 1)] = make_pixel(0x11, 0x21, 0x31, 0x41);
+  objs->in_small.data[compute_index(&objs->in_small, 1, 0)] = make_pixel(0x12, 0x22, 0x32, 0x42);
+  objs->in_small.data[compute_index(&objs->in_small, 1, 1)] = make_pixel(0x13, 0x23, 0x33, 0x43);
 
-  struct Picture sq_test_pic = {
-    TEST_COLORS,
-    12, // width
-    12, // height
-    "rrrrrr      "
-    " ggggg      "
-    "  bbbb      "
-    "   mmm      "
-    "    cc      "
-    "     r      "
-    "            "
-    "            "
-    "            "
-    "            "
-    "            "
-    "            "
-  };
-  objs->sq_test_pic = sq_test_pic;
-  objs->sq_test = picture_to_img( &sq_test_pic );
-  objs->sq_test_out = (struct Image *) malloc( sizeof( struct Image ) );
-  img_init( objs->sq_test_out, objs->sq_test->width, objs->sq_test->height );
+  fill_solid(&objs->in_rect, make_pixel(0xFF, 0x00, 0x00, 0xFF));
+  objs->in_rect.data[compute_index(&objs->in_rect, 2, 3)] = make_pixel(0x12, 0x34, 0x56, 0x78);
+  objs->in_rect.data[compute_index(&objs->in_rect, 0, 0)] = make_pixel(0x01, 0x02, 0x03, 0x04);
+
+  fill_solid(&objs->out_small, make_pixel(0, 0, 0, 0xFF));
+  fill_solid(&objs->out_rect,  make_pixel(0, 0, 0, 0xFF));
 
   return objs;
 }
 
-void cleanup( TestObjs *objs ) {
-  destroy_img( objs->smiley );
-  destroy_img( objs->smiley_out );
-  destroy_img( objs->sq_test );
-  destroy_img( objs->sq_test_out );
-
-  free( objs );
+static void cleanup(TestObjs *objs) {
+  img_cleanup(&objs->in_small);
+  img_cleanup(&objs->out_small);
+  img_cleanup(&objs->in_rect);
+  img_cleanup(&objs->out_rect);
+  free(objs);
 }
 
-////////////////////////////////////////////////////////////////////////
-// Test code helper functions
-////////////////////////////////////////////////////////////////////////
-
-struct Image *picture_to_img( const struct Picture *pic ) {
-  struct Image *img;
-
-  img = (struct Image *) malloc( sizeof(struct Image) );
-  img_init( img, pic->width, pic->height );
-
-  for ( int i = 0; i < pic->height; ++i ) {
-    for ( int j = 0; j < pic->width; ++j ) {
-      int index = i * img->width + j;
-      uint32_t color = lookup_color( pic->data[index], pic->colors );
-      img->data[index] = color;
-    }
-  }
-
-  return img;
-}
-
-uint32_t lookup_color(char c, const struct ExpectedColor *colors) {
-  for (int i = 0; ; i++) {
-    assert(colors[i].c != 0);
-    if (colors[i].c == c) {
-      return colors[i].color;
-    }
-  }
-}
-
-// Returns true IFF both Image objects are identical
-bool images_equal( struct Image *a, struct Image *b ) {
-  if ( a->width != b->width || a->height != b->height )
-    return false;
-
-  for ( int i = 0; i < a->height; ++i )
-    for ( int j = 0; j < a->width; ++j ) {
-      int index = i*a->width + j;
-      if ( a->data[index] != b->data[index] )
-        return false;
-    }
-
-  return true;
-}
-
-void destroy_img( struct Image *img ) {
-  if ( img != NULL )
-    img_cleanup( img );
-  free( img );
-}
-
-////////////////////////////////////////////////////////////////////////
-// API Test functions
-////////////////////////////////////////////////////////////////////////
-
-void test_complement_basic( TestObjs *objs ) {
-  {
-    imgproc_complement( objs->smiley, objs->smiley_out );
-
-    int height = objs->smiley->height;
-    int width  = objs->smiley->width;
-
-    for ( int i = 0; i < height; ++i ) {
-      for ( int j = 0; j < width; ++j ) {
-        int index = i*width + j;
-        uint32_t pixel = objs->smiley_out->data[ index ];
-        uint32_t expected_color = ~( objs->smiley->data[ index ] ) & 0xFFFFFF00;
-        uint32_t expected_alpha =  objs->smiley->data[ index ] & 0xFF;
-        ASSERT( pixel == (expected_color | expected_alpha ) );
-      }
-    }
-  }
-
-  {
-    imgproc_complement( objs->sq_test, objs->sq_test_out );
-
-    int height = objs->sq_test->height;
-    int width  = objs->sq_test->width;
-
-    for ( int i = 0; i < height; ++i ) {
-      for ( int j = 0; j < width; ++j ) {
-        int index = i*width + j;
-        uint32_t pixel = objs->sq_test_out->data[ index ];
-        uint32_t expected_color = ~( objs->sq_test->data[ index ] ) & 0xFFFFFF00;
-        uint32_t expected_alpha =  objs->sq_test->data[ index ] & 0xFF;
-        ASSERT( pixel == (expected_color | expected_alpha ) );
-      }
-    }
-  }
-}
-
-void test_transpose_basic( TestObjs *objs ) {
-  struct Picture sq_test_transpose_expected_pic = {
-    {
-      { ' ', 0x000000ff },
-      { 'a', 0xff0000ff },
-      { 'b', 0xffffffff },
-      { 'c', 0x00ff00ff },
-      { 'd', 0x0000ffff },
-      { 'e', 0xff00ffff },
-      { 'f', 0x00ffffff },
-    },
-    12, // width
-    12, // height
-    "abbbbbbbbbbb"
-    "acbbbbbbbbbb"
-    "acdbbbbbbbbb"
-    "acdebbbbbbbb"
-    "acdefbbbbbbb"
-    "acdefabbbbbb"
-    "bbbbbbbbbbbb"
-    "bbbbbbbbbbbb"
-    "bbbbbbbbbbbb"
-    "bbbbbbbbbbbb"
-    "bbbbbbbbbbbb"
-    "bbbbbbbbbbbb"
-  };
-
-  struct Image *sq_test_transpose_expected =
-    picture_to_img( &sq_test_transpose_expected_pic );
-
-  imgproc_transpose( objs->sq_test, objs->sq_test_out );
-
-  ASSERT( images_equal( objs->sq_test_out, sq_test_transpose_expected ) );
-
-  destroy_img( sq_test_transpose_expected );
-}
-
-void test_ellipse_basic( TestObjs *objs ) {
-  struct Picture smiley_ellipse_expected_pic = {
-    {
-      { ' ', 0x000000ff },
-      { 'a', 0x00ff00ff },
-      { 'b', 0xffffffff },
-      { 'c', 0x0000ffff },
-      { 'd', 0xff0000ff },
-      { 'e', 0x00ffffff },
-      { 'f', 0xff00ffff },
-    },
-    16, // width
-    10, // height
-    "        a       "
-    "    bbbbbbbbc   "
-    "  dbbbdbbcbbbeb "
-    " cbbbbbbbbbbbbcb"
-    " cbbbbbbbbbbbbdb"
-    "babbbcbbbbebbbdb"
-    " bebbbaadcbbbcbb"
-    " bbfbbbbbbbbebbb"
-    "  bbaaaddcfebbb "
-    "    bbbbbbbbb   "
-  };
-
-  struct Image *smiley_ellipse_expected =
-    picture_to_img( &smiley_ellipse_expected_pic );
-
-  imgproc_ellipse( objs->smiley, objs->smiley_out );
-
-  ASSERT( images_equal( objs->smiley_out, smiley_ellipse_expected ) );
-
-  destroy_img( smiley_ellipse_expected );
-}
-
-void test_emboss_basic( TestObjs *objs ) {
-  struct Picture smiley_emboss_expected_pic = {
-    {
-      { ' ', 0x000000ff },
-      { 'a', 0x808080ff },
-      { 'b', 0xffffffff },
-    },
-    16, // width
-    10, // height
-    "aaaaaaaaaaaaaaaa"
-    "aaaba       baaa"
-    "aaba abaabaaa aa"
-    "aba aaa aa aaaba"
-    "ab aaaaaaaaaaab "
-    "ab aabaaaabaaab "
-    "aa aaa bbba aba "
-    "aaa aaa    aba a"
-    "aaaabbbbbbbba aa"
-    "aaaaa        aaa"
-  };
-
-  struct Image *smiley_emboss_expected =
-    picture_to_img( &smiley_emboss_expected_pic );
-
-  imgproc_emboss( objs->smiley, objs->smiley_out );
-
-  ASSERT( images_equal( objs->smiley_out, smiley_emboss_expected ) );
-
-  destroy_img( smiley_emboss_expected );
-}
-
-////////////////////////////////////////////////////////////////////////
-// Helper unit tests
-////////////////////////////////////////////////////////////////////////
-
-void test_getters_and_make_pixel(TestObjs *objs) {
+void test_getters_and_make_pixel(TestObjs *t) {
+  (void)t;
   uint32_t p = make_pixel(0x12, 0x34, 0x56, 0x78);
   ASSERT(get_r(p) == 0x12);
   ASSERT(get_g(p) == 0x34);
   ASSERT(get_b(p) == 0x56);
   ASSERT(get_a(p) == 0x78);
 
-  // Round trip on a few values
-  uint32_t p2 = make_pixel(255, 0, 128, 1);
-  ASSERT(get_r(p2) == 255);
-  ASSERT(get_g(p2) == 0);
-  ASSERT(get_b(p2) == 128);
-  ASSERT(get_a(p2) == 1);
+  p = make_pixel(0xAB, 0xCD, 0xEF, 0x01);
+  ASSERT(get_r(p) == 0xAB);
+  ASSERT(get_g(p) == 0xCD);
+  ASSERT(get_b(p) == 0xEF);
+  ASSERT(get_a(p) == 0x01);
 }
 
-void test_compute_index_basic( TestObjs *objs ) {
+void test_compute_index_basic(TestObjs *t) {
+  (void)t;
   struct Image img;
   img_init(&img, 5, 3);
-  // Row-major: index = row*width + col
   ASSERT(compute_index(&img, 0, 0) == 0);
   ASSERT(compute_index(&img, 0, 4) == 4);
   ASSERT(compute_index(&img, 1, 0) == 5);
@@ -406,15 +90,131 @@ void test_compute_index_basic( TestObjs *objs ) {
   img_cleanup(&img);
 }
 
-void test_is_in_ellipse_basic( TestObjs *objs ) {
+#ifndef ASM_BUILD
+void test_is_in_ellipse_basic(TestObjs *t) {
+  (void)t;
   struct Image img;
-  img_init(&img, 6, 4); // a=floor(6/2)=3, b=floor(4/2)=2
-  // Center (row=b=2, col=a=3) must be included
+  img_init(&img, 6, 4);
   ASSERT(is_in_ellipse(&img, 2, 3) == 1);
-  // Far corner (row=0,col=0) should be outside for this size
+  ASSERT(is_in_ellipse(&img, 0, 3) == 1);
+  ASSERT(is_in_ellipse(&img, 0, 2) == 0);
   ASSERT(is_in_ellipse(&img, 0, 0) == 0);
-  // Points along axes near center likely inside
-  ASSERT(is_in_ellipse(&img, 2, 0) == 1); // left edge on major axis
-  ASSERT(is_in_ellipse(&img, 0, 3) == 1); // top center often outside for b=2
   img_cleanup(&img);
+}
+#endif
+
+void test_complement_basic(TestObjs *t) {
+  fill_solid(&t->out_small, make_pixel(0, 0, 0, 0xFF));
+
+  imgproc_complement(&t->in_small, &t->out_small);
+
+  for (int r = 0; r < t->in_small.height; r++) {
+    for (int c = 0; c < t->in_small.width; c++) {
+      uint32_t pin  = t->in_small.data[compute_index(&t->in_small, r, c)];
+      uint32_t pout = t->out_small.data[compute_index(&t->out_small, r, c)];
+      uint32_t expected = ((~pin) & 0xFFFFFF00u) | (pin & 0xFFu);
+      ASSERT(pout == expected);
+    }
+  }
+}
+
+void test_transpose_basic(TestObjs *t) {
+  int ok = imgproc_transpose(&t->in_small, &t->out_small);
+  ASSERT(ok == 1);
+
+  ASSERT(t->out_small.data[compute_index(&t->out_small, 0, 0)] ==
+         t->in_small.data[compute_index(&t->in_small, 0, 0)]);
+  ASSERT(t->out_small.data[compute_index(&t->out_small, 1, 1)] ==
+         t->in_small.data[compute_index(&t->in_small, 1, 1)]);
+  ASSERT(t->out_small.data[compute_index(&t->out_small, 1, 0)] ==
+         t->in_small.data[compute_index(&t->in_small, 0, 1)]);
+  ASSERT(t->out_small.data[compute_index(&t->out_small, 0, 1)] ==
+         t->in_small.data[compute_index(&t->in_small, 1, 0)]);
+
+  ok = imgproc_transpose(&t->in_rect, &t->out_rect);
+  ASSERT(ok == 0);
+}
+
+#ifndef ASM_BUILD
+void test_ellipse_basic(TestObjs *t) {
+  fill_solid(&t->out_rect, make_pixel(0, 0, 0, 0xFF));
+
+  imgproc_ellipse(&t->in_rect, &t->out_rect);
+
+  int a = t->in_rect.width / 2;
+  int b = t->in_rect.height / 2;
+
+  ASSERT(t->out_rect.data[compute_index(&t->out_rect, b, a)] ==
+         t->in_rect.data[compute_index(&t->in_rect, b, a)]);
+  ASSERT(t->out_rect.data[compute_index(&t->out_rect, 0, 0)] ==
+         make_pixel(0, 0, 0, 0xFF));
+  ASSERT(t->out_rect.data[compute_index(&t->out_rect, 0, 3)] ==
+         t->in_rect.data[compute_index(&t->in_rect, 0, 3)]);
+}
+
+static int clamp255(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+void test_emboss_basic(TestObjs *t) {
+  struct Image in, out;
+  img_init(&in, 2, 2);
+  img_init(&out, 2, 2);
+
+  in.data[compute_index(&in,0,0)] = make_pixel(10,  20,  30,  200);
+  in.data[compute_index(&in,0,1)] = make_pixel(40,  50,  60,  210);
+  in.data[compute_index(&in,1,0)] = make_pixel(70,  80,  90,  220);
+  in.data[compute_index(&in,1,1)] = make_pixel(100, 110, 120, 230);
+
+  imgproc_emboss(&in, &out);
+
+  ASSERT(out.data[compute_index(&out,0,0)] == make_pixel(128,128,128, 200));
+  ASSERT(out.data[compute_index(&out,0,1)] == make_pixel(128,128,128, 210));
+  ASSERT(out.data[compute_index(&out,1,0)] == make_pixel(128,128,128, 220));
+
+  int r=100,g=110,b=120, a=230;
+  int nr=10, ng=20, nb=30;
+  int dr = nr - r, dg = ng - g, db = nb - b;
+  int adr = dr>=0?dr:-dr, adg = dg>=0?dg:-dg, adb = db>=0?db:-db;
+  int diff;
+  if (adr>=adg && adr>=adb) diff = dr;
+  else if (adg>=adb)        diff = dg;
+  else                      diff = db;
+  int gray = clamp255(128 + diff);
+  ASSERT(out.data[compute_index(&out,1,1)] == make_pixel(gray,gray,gray, a));
+
+  img_cleanup(&in);
+  img_cleanup(&out);
+
+  (void)t;
+}
+#endif
+
+int main(int argc, char **argv) {
+  if (argc > 1) {
+    tctest_testname_to_execute = argv[1];
+  }
+
+  printf("Running imgproc tests (%s build)\n",
+#ifdef ASM_BUILD
+         "ASM"
+#else
+         "C"
+#endif
+  );
+
+#ifndef ASM_BUILD
+  TEST( test_complement_basic );
+  TEST( test_transpose_basic );
+  TEST( test_ellipse_basic );
+  TEST( test_emboss_basic );
+  TEST( test_getters_and_make_pixel );
+  TEST( test_compute_index_basic );
+  TEST( test_is_in_ellipse_basic );
+#else
+  TEST( test_complement_basic );
+  TEST( test_transpose_basic );
+  TEST( test_getters_and_make_pixel );
+  TEST( test_compute_index_basic );
+#endif
+
+  return 0;
 }

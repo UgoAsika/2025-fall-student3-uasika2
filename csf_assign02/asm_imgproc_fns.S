@@ -1,128 +1,185 @@
 /*
- * x86-64 assembly language implementations of functions
+ * asm_imgproc_fns.S
+ * x86-64 (System V) assembly implementations for Assignment 2.
+ *
+ * Implemented here (MS2):
+ *   - imgproc_complement
+ *   - imgproc_transpose
+ *   - get_r, get_g, get_b, get_a
+ *   - make_pixel
+ *   - compute_index
+ *
+ * Left for MS3:
+ *   - imgproc_ellipse
+ *   - imgproc_emboss
  */
 
-	.section .text
+    .section .text
 
-/* Offsets of struct Image fields */
-#define IMAGE_WIDTH_OFFSET   0
-#define IMAGE_HEIGHT_OFFSET  4
-#define IMAGE_DATA_OFFSET    8
+#define IMAGE_WIDTH_OFFSET    0
+#define IMAGE_HEIGHT_OFFSET   4
+#define IMAGE_DATA_OFFSET     8
 
-/*
- * TODO: define your helper functions here.
- * Don't forget to use the .globl directive to make
- * them visible to the test code.
- */
+    .globl get_r
+get_r:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    movl    %edi, %eax
+    shrl    $24, %eax
+    andl    $0xFF, %eax
+    popq    %rbp
+    ret
 
-/*
- * Definitions of image transformation functions
- */
+    .globl get_g
+get_g:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    movl    %edi, %eax
+    shrl    $16, %eax
+    andl    $0xFF, %eax
+    popq    %rbp
+    ret
 
-/*
- *  Transform the color component values in each input pixel
- *  by applying the bitwise complement operation. I.e., each bit
- *  in the color component information should be inverted
- *  (1 becomes 0, 0 becomes 1.) The alpha value of each pixel should
- *  be left unchanged.
- * 
- *  Parameters:
- *  %rdi - pointer to the input Image
- *  %rsi - pointer to the output Image (in which the
- *         transformed pixels should be stored)
- */
-	.globl imgproc_complement
+    .globl get_b
+get_b:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    movl    %edi, %eax
+    shrl    $8, %eax
+    andl    $0xFF, %eax
+    popq    %rbp
+    ret
+
+    .globl get_a
+get_a:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    movl    %edi, %eax
+    andl    $0xFF, %eax
+    popq    %rbp
+    ret
+
+    .globl make_pixel
+make_pixel:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    pushq   %rbx
+    movl    %edi, %eax
+    andl    $0xFF, %eax
+    shll    $24, %eax
+    movl    %esi, %ebx
+    andl    $0xFF, %ebx
+    shll    $16, %ebx
+    orl     %ebx, %eax
+    movl    %edx, %ebx
+    andl    $0xFF, %ebx
+    shll    $8, %ebx
+    orl     %ebx, %eax
+    andl    $0xFF, %ecx
+    orl     %ecx, %eax
+    popq    %rbx
+    popq    %rbp
+    ret
+
+    .globl compute_index
+compute_index:
+    pushq   %rbp
+    movq    %rsp, %rbp
+    movl    IMAGE_WIDTH_OFFSET(%rdi), %eax
+    imull   %esi, %eax
+    addl    %edx, %eax
+    popq    %rbp
+    ret
+
+    .globl imgproc_complement
 imgproc_complement:
-	/* TODO: implement */
-	ret
+    pushq   %rbp
+    movq    %rsp, %rbp
+    pushq   %rbx
+    pushq   %r12
+    pushq   %r13
+    pushq   %r14
+    pushq   %r15
+    movq    IMAGE_DATA_OFFSET(%rdi), %r12
+    movq    IMAGE_DATA_OFFSET(%rsi), %r13
+    movl    IMAGE_WIDTH_OFFSET(%rdi),  %r14d
+    imull   IMAGE_HEIGHT_OFFSET(%rdi), %r14d
+    xorl    %r15d, %r15d
+.Lcompl_loop:
+    cmpl    %r14d, %r15d
+    jge     .Lcompl_done
+    movl    (%r12, %r15, 4), %ebx
+    movl    %ebx, %eax
+    andl    $0xFF, %eax
+    notl    %ebx
+    andl    $0xFFFFFF00, %ebx
+    orl     %eax, %ebx
+    movl    %ebx, (%r13, %r15, 4)
+    incl    %r15d
+    jmp     .Lcompl_loop
+.Lcompl_done:
+    popq    %r15
+    popq    %r14
+    popq    %r13
+    popq    %r12
+    popq    %rbx
+    popq    %rbp
+    ret
 
-/*
- *  Transform the input image by swapping the row and column
- *  of each source pixel when copying it to the output image.
- *  E.g., a pixel at row i and column j of the input image
- *  should be copied to row j and column i of the output image.
- *  Note that this transformation can only be applied to square
- *  images (where the width and height are identical.)
- * 
- *  Parameters:
- *  %rdi - pointer to the input Image
- *  %rsi - pointer to the output Image (in which the
- *                    transformed pixels should be stored)
- * 
- *  @return 1 if the transformation succeeded, or 0 if the
- *          transformation can't be applied because the image
- *          width and height are not the same
- */
-	.globl imgproc_transpose
+    .globl imgproc_transpose
 imgproc_transpose:
-	/* TODO: implement */
-	ret
+    pushq   %rbp
+    movq    %rsp, %rbp
+    pushq   %rbx
+    pushq   %r12
+    pushq   %r13
+    pushq   %r14
+    pushq   %r15
+    movl    IMAGE_WIDTH_OFFSET(%rdi),  %r14d
+    movl    IMAGE_HEIGHT_OFFSET(%rdi), %ecx
+    cmpl    %ecx, %r14d
+    jne     .Lti_not_square
+    movq    IMAGE_DATA_OFFSET(%rdi), %r12
+    movq    IMAGE_DATA_OFFSET(%rsi), %r13
+    xorl    %r15d, %r15d
+.Lti_outer:
+    cmpl    %r14d, %r15d
+    jge     .Lti_done
+    xorl    %ebx, %ebx
+.Lti_inner:
+    cmpl    %r14d, %ebx
+    jge     .Lti_next_row
+    movl    %r15d, %edx
+    imull   %r14d, %edx
+    addl    %ebx, %edx
+    movl    %ebx, %eax
+    imull   %r14d, %eax
+    addl    %r15d, %eax
+    movl    (%r12, %rdx, 4), %esi
+    movl    %esi, (%r13, %rax, 4)
+    incl    %ebx
+    jmp     .Lti_inner
+.Lti_next_row:
+    incl    %r15d
+    jmp     .Lti_outer
+.Lti_done:
+    movl    $1, %eax
+    jmp     .Lti_epilogue
+.Lti_not_square:
+    xorl    %eax, %eax
+.Lti_epilogue:
+    popq    %r15
+    popq    %r14
+    popq    %r13
+    popq    %r12
+    popq    %rbx
+    popq    %rbp
+    ret
 
-/*
- *  Transform the input image by copying only those pixels that are
- *  within an ellipse centered within the bounds of the image.
- *  Pixels not in the ellipse should be left unmodified, which will
- *  make them opaque black.
- * 
- *  Let w represent the width of the image and h represent the
- *  height of the image. Let a=floor(w/2) and b=floor(h/2).
- *  Consider the pixel at row b and column a is being at the
- *  center of the image. When considering whether a specific pixel
- *  is in the ellipse, x is the horizontal distance to the center
- *  of the image and y is the vertical distance to the center of
- *  the image. The pixel at the coordinates described by x and y
- *  is in the ellipse if the following inequality is true:
- * 
- *    floor( (10000*x*x) / (a*a) ) + floor( (10000*y*y) / (b*b) ) <= 10000
- * 
- *  Parameters:
- *  %rdi - pointer to the input Image
- *  %rsi - pointer to the output Image (in which the
- *                    transformed pixels should be stored)
- */
-	.globl imgproc_ellipse
+    .globl imgproc_ellipse
 imgproc_ellipse:
-	/* TODO: implement */
-	ret
+    ret
 
-/*
- *  Transform the input image using an "emboss" effect. The pixels
- *  of the source image are transformed as follows.
- * 
- *  The top row and left column of pixels are transformed so that their
- *  red, green, and blue color component values are all set to 128,
- *  and their alpha values are not modified.
- * 
- *  For all other pixels, we consider the pixel's color component
- *  values r, g, and b, and also the pixel's upper-left neighbor's
- *  color component values nr, ng, and nb. In comparing the color
- *  component values of the pixel and its upper-left neighbor,
- *  we consider the differences (nr-r), (ng-g), and (nb-b).
- *  Whichever of these differences has the largest absolute value
- *  we refer to as diff. (Note that in the case that more than one
- *  difference has the same absolute value, the red difference has
- *  priority over green and blue, and the green difference has priority
- *  over blue.)
- * 
- *  From the value diff, compute the value gray as 128 + diff.
- *  However, gray should be clamped so that it is in the range
- *  0..255. I.e., if it's negative, it should become 0, and if
- *  it is greater than 255, it should become 255.
- * 
- *  For all pixels not in the top or left row, the pixel's red, green,
- *  and blue color component values should be set to gray, and the
- *  alpha value should be left unmodified.
- * 
- *  Parameters:
- *  %rdi - pointer to the input Image
- *  %rsi - pointer to the output Image (in which the
- *                    transformed pixels should be stored)
- */
-	.globl imgproc_emboss
+    .globl imgproc_emboss
 imgproc_emboss:
-	/* TODO: implement */
-	ret
-
-/*
-vim:ft=gas:
-*/
+    ret

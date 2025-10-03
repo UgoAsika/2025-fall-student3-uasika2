@@ -34,21 +34,21 @@ int32_t compute_index( struct Image *img, int32_t row, int32_t col ) {
   return row * img->width + col;
 }
 
-//Return 1 if row , col is in the centred ellipse for the spec , else 0
+// Return 1 if (row,col) is in the centered ellipse per the spec, else 0
 int is_in_ellipse( struct Image *img, int32_t row, int32_t col ) {
   assert(img != NULL);
   const int32_t w = img->width;
   const int32_t h = img->height;
-  const int32_t a = w / 2;  //fllor(w/2)
-  const int32_t b = h / 2;  //floor(w/2)
+  const int32_t a = w / 2;  // floor(w/2)
+  const int32_t b = h / 2;  // floor(h/2)
 
-  //center pixel coordinates (row=b, col=a)
-  const int32_t x = col - a; //horizontal distance
-  const int32_t y = row - b; //vertical distance
+  // center pixel coordinates (row=b, col=a)
+  const int32_t x = col - a; // horizontal distance
+  const int32_t y = row - b; // vertical distance
 
-  //handle degenerate cases to avoid division by zeroo
+  // handle cases to avoid division by zero
   if (a == 0 && b == 0) {
-    //1 by 1 image, only the single centre pixel is inside
+    // 1x1 image: only the single center pixel is inside
     return (x == 0 && y == 0) ? 1 : 0;
   }
   if (a == 0) {
@@ -69,6 +69,7 @@ int is_in_ellipse( struct Image *img, int32_t row, int32_t col ) {
   int64_t term_y = ((int64_t)10000 * (int64_t)y * (int64_t)y) / bx2;
   return (term_x + term_y) <= 10000 ? 1 : 0;
 }
+
 //! Transform the color component values in each input pixel
 //! by applying the bitwise complement operation. I.e., each bit
 //! in the color component information should be inverted
@@ -89,8 +90,8 @@ void imgproc_complement( struct Image *input_img, struct Image *output_img ) {
 
   for (int32_t i = 0; i < n; ++i) {
     uint32_t p = input_img->data[i];
-    uint32_t color_compl = (~p) & 0xFFFFFF00u; //invert RGB, keep low 8 bits zeroed
-    uint32_t alpha       =  p   & 0x000000FFu;  //preserve the alphaa
+    uint32_t color_compl = (~p) & 0xFFFFFF00u; // invert RGB, keep low 8 bits zeroed
+    uint32_t alpha       =  p   & 0x000000FFu; // preserve the alpha
     output_img->data[i]  = color_compl | alpha;
   }
 }
@@ -112,12 +113,12 @@ void imgproc_complement( struct Image *input_img, struct Image *output_img ) {
 int imgproc_transpose( struct Image *input_img, struct Image *output_img ) {
   assert(input_img && output_img);
   if (input_img->width != input_img->height) {
-    return 0; // cannot transpose a non square
+    return 0; // cannot transpose somethng thats not a squre
   }
   assert(output_img->width == input_img->width);
   assert(output_img->height == input_img->height);
 
-  int32_t n = input_img->width; //width == height
+  int32_t n = input_img->width; // width == height
   for (int32_t i = 0; i < n; ++i) {
     for (int32_t j = 0; j < n; ++j) {
       int32_t src_idx = i * n + j;
@@ -130,8 +131,7 @@ int imgproc_transpose( struct Image *input_img, struct Image *output_img ) {
 
 //! Transform the input image by copying only those pixels that are
 //! within an ellipse centered within the bounds of the image.
-//! Pixels not in the ellipse should be left unmodified, which will
-//! make them opaque black.
+//! Pixels not in the ellipse should be set to fully-opaque black.
 //!
 //! Let w represent the width of the image and h represent the
 //! height of the image. Let a=floor(w/2) and b=floor(h/2).
@@ -157,11 +157,12 @@ void imgproc_ellipse( struct Image *input_img, struct Image *output_img ) {
 
   for (int32_t row = 0; row < h; ++row) {
     for (int32_t col = 0; col < w; ++col) {
+      int32_t idx = compute_index(input_img, row, col);
       if (is_in_ellipse(input_img, row, col)) {
-        int32_t idx = compute_index(input_img, row, col);
         output_img->data[idx] = input_img->data[idx];
+      } else {
+        output_img->data[idx] = make_pixel(0, 0, 0, 255);
       }
-      //else leave it as initialised opaque black from img init
     }
   }
 }
@@ -211,11 +212,9 @@ void imgproc_emboss( struct Image *input_img, struct Image *output_img ) {
       uint32_t a = get_a(p);
 
       if (row == 0 || col == 0) {
-        //keep alpha
         uint32_t gray = 128u;
         output_img->data[idx] = make_pixel(gray, gray, gray, a);
       } else {
-        // Compare with upperleft neighbour
         int32_t nidx = compute_index(input_img, row - 1, col - 1);
         uint32_t np = input_img->data[nidx];
 
@@ -240,7 +239,7 @@ void imgproc_emboss( struct Image *input_img, struct Image *output_img ) {
         } else if (adg >= adb) {
           diff = dg;                 // green wins tie with blue
         } else {
-          diff = db;                 // else blue
+          diff = db;                 // else lue
         }
 
         int32_t gray_i = 128 + diff;

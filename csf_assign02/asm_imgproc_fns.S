@@ -2,8 +2,6 @@
 
 /* ============================================================
    Helper functions: extract components, build a pixel, index.
-   Each function retuns results in %eax per the SysV AMD64 ABI.
-   Comments are full sentences but a bit casual and a tiny bit messy on purpose.
    ============================================================ */
 
 	.globl get_r

@@ -18,4 +18,7 @@ csim: $(OBJS)
 clean:
 	rm -f $(OBJS) $(TARGET)
 
+solution.zip:
+	zip -9r solution.zip main.cpp Makefile README.txt
+
 make: all

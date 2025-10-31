@@ -33,6 +33,34 @@ The simualtor supports all combinations of:
     lru/FIFO
 
 
+Milestone 3
+
+Description:
+This final milestone completes the cache simulator with all assignment specifications fully implemented and tested, the simulator now handles every valid cache config and policy combination correctly. It performs full memory access simulation with accurate cycle counting an good eviction logic for both LRU and FIFO policies.
+
+Key Features Implemented:
+* Handles variable sets, ways and block sizes (all powers of time)
+* Supports both write allocate and no write allocate
+* Supports both write through and write back
+* Implements both LRU and FIFO replacement strategies
+
+*Fully tracks and reports:
+    - Total loads
+    - Total stores
+    -Load hits/misses
+    -Store hits/misses
+    -Total cycles (within +-5% tolerance)
+
+
+    Best cache report:
+        After testing across the provded traces ,
+        the config that achieved the best overall balance of hit rate and total cycles was 
+        256 sets by 4 ways by 16 byte blocks
+        write - allocate + write - back + LRU replacement
+        This set up achieved the best total runtime efficiency 
+        
+
+
 Compilation:
 
 make clean && make

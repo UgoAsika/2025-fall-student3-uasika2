@@ -4,7 +4,7 @@
 #include <vector>
 #include <sstream>
 #include <stdexcept>
-#include<limits>
+#include <limits>
 
 //Im using the config struct to hold cache config parameters parsed from command line.
 
@@ -15,7 +15,6 @@ struct Config{
     bool writeAllocate = true; // if true write-allcoate else no write allocate
     bool writeThrough = false; // if true write through, else write back
     enum Evict {LRU, FIFO} evict = LRU; //this is our eviction policy
-
 };
 
 
@@ -153,14 +152,14 @@ struct Cache{
         }
     }
 
-    //Load a block from memory into cache, evicting we need to
+    //Load a block from memory into cache, evicting if we need to
     size_t fillBlock(Set& s, uint64_t tag){
         size_t victim = chooseVictim(s);
         //if evicting a dirty line (write-back), write to memory first.
         if(s.lines[victim].valid && s.lines[victim].dirty && !cfg.writeThrough){
             cycles += memCost_bytes(cfg.blockBytes);
         }
-        //This fetches the new block from meory into cache
+        //This fetches the new block from memory into cache
         cycles += memCost_bytes(cfg.blockBytes);
 
         //This just updates metadata
@@ -168,7 +167,7 @@ struct Cache{
         ln.valid = true;
         ln.dirty = false;
         ln.tag = tag;
-        ln.lastUsed = ++accessTick;
+        ln.lastUsed = 0; // we’ll update this after the access itself
         ln.fifoOrdinal = s.nextFifoOrdinal++;
         return victim;
     }
@@ -198,7 +197,7 @@ struct Cache{
         s.lines[filled].lastUsed = ++accessTick;
     }
 
-    //Story (writing) operation
+    //Store (writing) operation
     void store(uint64_t addr){
         ++totalStores;
         uint64_t idx = indexOf(addr);
@@ -239,8 +238,6 @@ struct Cache{
             cycles += memCost_word();
         }
     }
-    
-
 };
 
 //THis is the parse config arguments
@@ -284,6 +281,9 @@ static bool parseConfig(int argc, char** argv, Config& cfg){
 }
 
 int main(int argc, char** argv) {
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+
     Config cfg;
 
     // Parse and validate configuration

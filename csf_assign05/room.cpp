@@ -1,26 +1,41 @@
+#include "room.h"
+#include "user.h"
 #include "guard.h"
 #include "message.h"
-#include "message_queue.h"
-#include "user.h"
-#include "room.h"
 
-Room::Room(const std::string &room_name)
-  : room_name(room_name) {
-  // TODO: initialize the mutex
+Room::Room(const std::string &nm)
+    : room_name(nm)
+{
+    // initialize mutex for protecting member set
+    pthread_mutex_init(&lock, nullptr);
 }
 
 Room::~Room() {
-  // TODO: destroy the mutex
+    // release mutex resources
+    pthread_mutex_destroy(&lock);
 }
 
-void Room::add_member(User *user) {
-  // TODO: add User to the room
+void Room::add_member(User *u) {
+    // add a User* into the membership set
+    Guard acquire(lock);
+    members.insert(u);
 }
 
-void Room::remove_member(User *user) {
-  // TODO: remove User from the room
+void Room::remove_member(User *u) {
+    // erase a User* from the membership set
+    Guard acquire(lock);
+    members.erase(u);
 }
 
-void Room::broadcast_message(const std::string &sender_username, const std::string &message_text) {
-  // TODO: send a message to every (receiver) User in the room
+void Room::broadcast_message(const std::string &sender, const std::string &text) {
+    std::string combined = room_name;
+    combined.append(":").append(sender).append(":").append(text);
+
+    // iterate safely over receivers and enqueue messages
+    Guard acquire(lock);
+    for (User *usr : members) {
+        // allocate a delivery packet for each receiver
+        Message *m = new Message(TAG_DELIVERY, combined);
+        usr->mqueue.enqueue(m);
+    }
 }
